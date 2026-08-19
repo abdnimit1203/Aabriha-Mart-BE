@@ -115,3 +115,38 @@ export const EFFECTIVE_PRICE_EXPR = {
 };
 
 export const IN_STOCK_FILTER = { $or: [{ stock: { $gt: 0 } }, { "variants.stock": { $gt: 0 } }] };
+
+// "On sale" means discountPrice is set and actually less than price — at the
+// product level for simple products, or on any variant for variant products.
+// Needs $expr (comparing two fields of the same document/subdocument), which
+// Mongo supports directly in find() queries, not just aggregation.
+// $ifNull (not $ne-against-null) on purpose: a missing discountPrice field
+// doesn't reliably compare equal to a literal null inside $map/$let scope,
+// so substitute price itself when discountPrice is absent — that collapses
+// the comparison to price > price (false), which is what "no discount" means.
+// The product-level branch is guarded to simple products (empty variants)
+// specifically: for a variant product, top-level price AND discountPrice are
+// both genuinely missing, so $ifNull cascades all the way to null on both
+// sides — and BSON orders null below any number, so an unguarded $gt would
+// wrongly read every variant product as "on sale".
+export const ON_SALE_FILTER = {
+  $expr: {
+    $or: [
+      {
+        $and: [
+          { $eq: [{ $size: { $ifNull: ["$variants", []] } }, 0] },
+          { $gt: [{ $ifNull: ["$price", 0] }, { $ifNull: ["$discountPrice", "$price"] }] },
+        ],
+      },
+      {
+        $anyElementTrue: {
+          $map: {
+            input: { $ifNull: ["$variants", []] },
+            as: "v",
+            in: { $gt: [{ $ifNull: ["$$v.price", 0] }, { $ifNull: ["$$v.discountPrice", "$$v.price"] }] },
+          },
+        },
+      },
+    ],
+  },
+};

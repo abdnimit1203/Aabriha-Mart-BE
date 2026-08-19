@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
-import { getCheckoutSummary, createStripeIntent, createOrder, getOrder } from "../controllers/orderController";
+import { getCheckoutSummary, createStripeIntent, createOrder, getOrder, listMyOrders } from "../controllers/orderController";
 
 export const orderRoutes = Router();
 
@@ -10,4 +10,5 @@ orderRoutes.use(requireAuth);
 orderRoutes.post("/summary", getCheckoutSummary);
 orderRoutes.post("/stripe/intent", createStripeIntent);
 orderRoutes.post("/", createOrder);
+orderRoutes.get("/", listMyOrders);
 orderRoutes.get("/:id", getOrder);

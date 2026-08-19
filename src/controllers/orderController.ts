@@ -105,3 +105,8 @@ export async function getOrder(req: AuthedRequest, res: Response) {
   if (!order) throw new HttpError(404, "Order not found.");
   res.json(order);
 }
+
+export async function listMyOrders(req: AuthedRequest, res: Response) {
+  const orders = await Order.find({ customer: req.userId }).sort({ createdAt: -1 }).limit(50);
+  res.json({ orders });
+}

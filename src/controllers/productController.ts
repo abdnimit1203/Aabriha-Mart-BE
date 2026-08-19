@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { Types } from "mongoose";
-import { Product, MAX_IMAGES, EFFECTIVE_PRICE_EXPR, IN_STOCK_FILTER } from "../models/Product";
+import { Product, MAX_IMAGES, EFFECTIVE_PRICE_EXPR, IN_STOCK_FILTER, ON_SALE_FILTER } from "../models/Product";
 import { HttpError } from "../middleware/errorHandler";
 
 type SortOption = "newest" | "price_asc" | "price_desc";
@@ -10,7 +10,7 @@ function isObjectId(value: string): boolean {
 }
 
 export async function listProducts(req: Request, res: Response) {
-  const { category, status, search, inStock, sort = "newest", page = "1", limit = "20" } = req.query as Record<
+  const { category, status, search, inStock, onSale, sort = "newest", page = "1", limit = "20" } = req.query as Record<
     string,
     string
   >;
@@ -32,6 +32,9 @@ export async function listProducts(req: Request, res: Response) {
   if (search) filter.$text = { $search: search };
   if (inStock === "true") {
     filter.$or = IN_STOCK_FILTER.$or;
+  }
+  if (onSale === "true") {
+    filter.$expr = ON_SALE_FILTER.$expr;
   }
 
   const pageNum = Math.max(1, Number(page));
