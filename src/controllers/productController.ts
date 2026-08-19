@@ -1,34 +1,93 @@
 import { Request, Response } from "express";
+import { Types } from "mongoose";
 import { Product } from "../models/Product";
 import { HttpError } from "../middleware/errorHandler";
 
 const MAX_IMAGES = 6;
 
+type SortOption = "newest" | "price_asc" | "price_desc";
+
+function isObjectId(value: string): boolean {
+  return Types.ObjectId.isValid(value);
+}
+
 export async function listProducts(req: Request, res: Response) {
-  const { category, status, search, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { category, status, search, inStock, sort = "newest", page = "1", limit = "20" } = req.query as Record<
+    string,
+    string
+  >;
 
   const filter: Record<string, unknown> = {};
-  if (category) filter.category = category;
+  // Comma-separated ids so a parent category page can include its children's products.
+  // Cast to ObjectId explicitly — .aggregate() below skips Mongoose's automatic
+  // query casting that .find() does, so raw id strings would silently match nothing.
+  if (category) {
+    const ids = category
+      .split(",")
+      .filter((id) => isObjectId(id))
+      .map((id) => new Types.ObjectId(id));
+    if (ids.length > 0) {
+      filter.category = ids.length > 1 ? { $in: ids } : ids[0];
+    }
+  }
   if (status) filter.status = status;
   if (search) filter.$text = { $search: search };
+  if (inStock === "true") {
+    filter.$or = [{ stock: { $gt: 0 } }, { "variants.stock": { $gt: 0 } }];
+  }
 
   const pageNum = Math.max(1, Number(page));
   const limitNum = Math.min(100, Math.max(1, Number(limit)));
+  const skip = (pageNum - 1) * limitNum;
+  const sortOption = sort as SortOption;
 
-  const [products, total] = await Promise.all([
-    Product.find(filter)
+  const total = await Product.countDocuments(filter);
+
+  let products;
+  if (sortOption === "price_asc" || sortOption === "price_desc") {
+    // Price lives on the product (simple products) or is the min across
+    // variants (variant products) — not sortable with a plain find().sort(),
+    // so compute it and order by it via aggregation, then re-fetch the
+    // populated documents in that same order.
+    const direction = sortOption === "price_asc" ? 1 : -1;
+    const ordered = await Product.aggregate([
+      { $match: filter },
+      {
+        $addFields: {
+          effectivePrice: {
+            $cond: [
+              { $gt: [{ $size: { $ifNull: ["$variants", []] } }, 0] },
+              { $min: "$variants.price" },
+              "$price",
+            ],
+          },
+        },
+      },
+      { $sort: { effectivePrice: direction } },
+      { $skip: skip },
+      { $limit: limitNum },
+      { $project: { _id: 1 } },
+    ]);
+
+    const orderedIds = ordered.map((doc) => doc._id);
+    const docs = await Product.find({ _id: { $in: orderedIds } }).populate("category", "name slug");
+    const byId = new Map(docs.map((doc) => [String(doc._id), doc]));
+    products = orderedIds.map((id) => byId.get(String(id))).filter(Boolean);
+  } else {
+    products = await Product.find(filter)
       .populate("category", "name slug")
-      .skip((pageNum - 1) * limitNum)
+      .skip(skip)
       .limit(limitNum)
-      .sort({ createdAt: -1 }),
-    Product.countDocuments(filter),
-  ]);
+      .sort({ createdAt: -1 });
+  }
 
   res.json({ products, total, page: pageNum, limit: limitNum });
 }
 
 export async function getProduct(req: Request, res: Response) {
-  const product = await Product.findById(req.params.id).populate("category", "name slug");
+  const id = String(req.params.id);
+  const query = isObjectId(id) ? { _id: id } : { slug: id };
+  const product = await Product.findOne(query).populate("category", "name slug");
   if (!product) throw new HttpError(404, "Product not found.");
   res.json(product);
 }
