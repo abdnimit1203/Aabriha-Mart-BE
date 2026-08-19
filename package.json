@@ -21,7 +21,8 @@
     "express": "^5.2.1",
     "firebase-admin": "^14.2.0",
     "imagekit": "^6.0.0",
-    "mongoose": "^9.9.3"
+    "mongoose": "^9.9.3",
+    "stripe": "^22.5.0"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

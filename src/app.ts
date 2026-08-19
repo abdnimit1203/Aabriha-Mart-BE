@@ -7,6 +7,7 @@ import { categoryRoutes } from "./routes/categoryRoutes";
 import { productRoutes } from "./routes/productRoutes";
 import { authRoutes } from "./routes/authRoutes";
 import { uploadRoutes } from "./routes/uploadRoutes";
+import { orderRoutes } from "./routes/orderRoutes";
 
 export const app = express();
 
@@ -20,6 +21,7 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/uploads", uploadRoutes);
+app.use("/api/orders", orderRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
