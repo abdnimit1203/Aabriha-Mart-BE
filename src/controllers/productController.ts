@@ -1,9 +1,7 @@
 import { Request, Response } from "express";
 import { Types } from "mongoose";
-import { Product } from "../models/Product";
+import { Product, MAX_IMAGES, EFFECTIVE_PRICE_EXPR, IN_STOCK_FILTER } from "../models/Product";
 import { HttpError } from "../middleware/errorHandler";
-
-const MAX_IMAGES = 6;
 
 type SortOption = "newest" | "price_asc" | "price_desc";
 
@@ -33,7 +31,7 @@ export async function listProducts(req: Request, res: Response) {
   if (status) filter.status = status;
   if (search) filter.$text = { $search: search };
   if (inStock === "true") {
-    filter.$or = [{ stock: { $gt: 0 } }, { "variants.stock": { $gt: 0 } }];
+    filter.$or = IN_STOCK_FILTER.$or;
   }
 
   const pageNum = Math.max(1, Number(page));
@@ -52,17 +50,7 @@ export async function listProducts(req: Request, res: Response) {
     const direction = sortOption === "price_asc" ? 1 : -1;
     const ordered = await Product.aggregate([
       { $match: filter },
-      {
-        $addFields: {
-          effectivePrice: {
-            $cond: [
-              { $gt: [{ $size: { $ifNull: ["$variants", []] } }, 0] },
-              { $min: "$variants.price" },
-              "$price",
-            ],
-          },
-        },
-      },
+      { $addFields: { effectivePrice: EFFECTIVE_PRICE_EXPR } },
       { $sort: { effectivePrice: direction } },
       { $skip: skip },
       { $limit: limitNum },

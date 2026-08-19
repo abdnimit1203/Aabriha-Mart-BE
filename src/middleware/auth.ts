@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { getAuth } from "firebase-admin/auth";
 import { firebaseApp } from "../config/firebase";
 import { User, AdminRole } from "../models/User";
+import { HttpError } from "./errorHandler";
 
 export interface AuthedRequest extends Request {
   userId?: string;
@@ -29,9 +30,7 @@ async function verifyToken(req: Request) {
 // before a profile has been synced (first-time signup/Google sign-in).
 export async function verifyFirebaseToken(req: FirebaseAuthedRequest, res: Response, next: NextFunction) {
   const decoded = await verifyToken(req);
-  if (!decoded) {
-    return res.status(401).json({ message: "Invalid or expired token." });
-  }
+  if (!decoded) throw new HttpError(401, "Invalid or expired token.");
   req.firebaseUid = decoded.uid;
   req.firebaseEmail = decoded.email;
   req.firebaseEmailVerified = Boolean(decoded.email_verified);
@@ -40,14 +39,10 @@ export async function verifyFirebaseToken(req: FirebaseAuthedRequest, res: Respo
 
 export async function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   const decoded = await verifyToken(req);
-  if (!decoded) {
-    return res.status(401).json({ message: "Invalid or expired token." });
-  }
+  if (!decoded) throw new HttpError(401, "Invalid or expired token.");
 
   const user = await User.findOne({ firebaseUid: decoded.uid, isDeleted: false });
-  if (!user) {
-    return res.status(401).json({ message: "Account not found." });
-  }
+  if (!user) throw new HttpError(401, "Account not found.");
   req.userId = String(user._id);
   req.userRole = user.role;
   next();
@@ -56,7 +51,7 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
 export function requireRole(...roles: Array<"customer" | AdminRole>) {
   return (req: AuthedRequest, res: Response, next: NextFunction) => {
     if (!req.userRole || !roles.includes(req.userRole)) {
-      return res.status(403).json({ message: "You do not have permission to perform this action." });
+      throw new HttpError(403, "You do not have permission to perform this action.");
     }
     next();
   };
