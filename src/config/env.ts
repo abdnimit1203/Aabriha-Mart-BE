@@ -24,5 +24,10 @@ export const env = {
     secretKey: process.env.STRIPE_SECRET_KEY ?? "",
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
   },
+  imagekit: {
+    publicKey: process.env.IMAGEKIT_PUBLIC_KEY ?? "",
+    privateKey: process.env.IMAGEKIT_PRIVATE_KEY ?? "",
+    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT ?? "",
+  },
   isVercel: Boolean(process.env.VERCEL),
 };

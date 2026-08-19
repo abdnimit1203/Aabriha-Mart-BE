@@ -71,9 +71,10 @@ export async function getMe(req: AuthedRequest, res: Response) {
 }
 
 export async function updateMe(req: AuthedRequest, res: Response) {
-  const { username, phone, defaultAddress } = req.body as {
+  const { username, phone, profileImage, defaultAddress } = req.body as {
     username?: string;
     phone?: string;
+    profileImage?: string;
     defaultAddress?: unknown;
   };
 
@@ -85,6 +86,7 @@ export async function updateMe(req: AuthedRequest, res: Response) {
     user.username = username;
   }
   if (phone !== undefined) user.phone = phone;
+  if (profileImage !== undefined) user.profileImage = profileImage;
   if (defaultAddress) user.defaultAddress = defaultAddress as typeof user.defaultAddress;
 
   await user.save();

@@ -18,6 +18,7 @@ export interface IUser {
   // it to a follow-up profile step. Not SMS-verified either way — checkout
   // always re-collects and re-confirms the phone number regardless.
   phone: string;
+  profileImage?: string;
   defaultAddress?: IAddress;
   role: "customer" | AdminRole;
   isDeleted: boolean;
@@ -40,6 +41,7 @@ const userSchema = new Schema<IUser>(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     emailVerified: { type: Boolean, default: false },
     phone: { type: String, default: "" },
+    profileImage: { type: String },
     defaultAddress: { type: addressSchema },
     role: { type: String, enum: ["customer", "super_admin", "order_manager"], default: "customer" },
     isDeleted: { type: Boolean, default: false },
