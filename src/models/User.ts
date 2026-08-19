@@ -14,7 +14,10 @@ export interface IUser {
   username: string;
   email: string;
   emailVerified: boolean;
-  phone: string; // collected at signup, not SMS-verified
+  // Collected at signup for email/password accounts; Google sign-in defers
+  // it to a follow-up profile step. Not SMS-verified either way — checkout
+  // always re-collects and re-confirms the phone number regardless.
+  phone: string;
   defaultAddress?: IAddress;
   role: "customer" | AdminRole;
   isDeleted: boolean;
@@ -36,7 +39,7 @@ const userSchema = new Schema<IUser>(
     username: { type: String, required: true, unique: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     emailVerified: { type: Boolean, default: false },
-    phone: { type: String, required: true },
+    phone: { type: String, default: "" },
     defaultAddress: { type: addressSchema },
     role: { type: String, enum: ["customer", "super_admin", "order_manager"], default: "customer" },
     isDeleted: { type: Boolean, default: false },
