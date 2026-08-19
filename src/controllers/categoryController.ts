@@ -8,8 +8,8 @@ export async function listCategories(req: Request, res: Response) {
 }
 
 export async function createCategory(req: Request, res: Response) {
-  const { name, slug, parent, image, sortOrder } = req.body;
-  const category = await Category.create({ name, slug, parent: parent || null, image, sortOrder });
+  const { name, slug, parent, image, sortOrder, isActive } = req.body;
+  const category = await Category.create({ name, slug, parent: parent || null, image, sortOrder, isActive });
   res.status(201).json(category);
 }
 
