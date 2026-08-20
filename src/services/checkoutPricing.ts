@@ -1,8 +1,13 @@
 import { Types } from "mongoose";
-import { Product, IVariant } from "../models/Product";
+import { Product, IVariant, IProduct } from "../models/Product";
 import { DeliveryRate, DeliveryZone, calculateDeliveryCharge } from "../models/DeliveryRate";
 import { IOrderItem } from "../models/Order";
 import { HttpError } from "../middleware/errorHandler";
+import { notifyLowStock, notifyOutOfStock } from "./notifications/notificationService";
+
+// Not admin-configurable yet (nothing in the current spec asked for that) —
+// a fixed threshold is enough for this store's current scale.
+const LOW_STOCK_THRESHOLD = 5;
 
 export interface CheckoutItemInput {
   productId: string;
@@ -92,14 +97,46 @@ export async function computeCheckoutPricing(
 // single-seller catalog, not a high-concurrency marketplace.
 export async function decrementStockForItems(items: IOrderItem[]): Promise<void> {
   for (const item of items) {
+    let updated: (IProduct & { _id: Types.ObjectId }) | null;
     if (item.variantId) {
-      await Product.updateOne(
+      updated = await Product.findOneAndUpdate(
         { _id: item.product, "variants._id": item.variantId },
-        { $inc: { "variants.$.stock": -item.quantity } }
+        { $inc: { "variants.$.stock": -item.quantity } },
+        { new: true }
       );
     } else {
-      await Product.updateOne({ _id: item.product }, { $inc: { stock: -item.quantity } });
+      updated = await Product.findOneAndUpdate(
+        { _id: item.product },
+        { $inc: { stock: -item.quantity } },
+        { new: true }
+      );
     }
+    if (updated) {
+      checkStockThresholds(updated, item.variantId, item.quantity).catch((err) =>
+        console.error("[notifications] stock threshold check failed:", err)
+      );
+    }
+  }
+}
+
+// Fires low_stock/out_of_stock only on the exact crossing into that state
+// (prior stock was above the threshold, new stock isn't) — not on every
+// subsequent order while a product is already low, which would otherwise
+// spam a notification per sale.
+async function checkStockThresholds(
+  product: IProduct & { _id: Types.ObjectId },
+  variantId: Types.ObjectId | undefined,
+  quantityDecremented: number
+): Promise<void> {
+  const variant = variantId ? product.variants.find((v) => String(v._id) === String(variantId)) : undefined;
+  const stock = variantId ? variant?.stock : product.stock;
+  if (stock === undefined) return;
+
+  const priorStock = stock + quantityDecremented;
+  if (stock <= 0 && priorStock > 0) {
+    await notifyOutOfStock(product, variant);
+  } else if (stock > 0 && stock <= LOW_STOCK_THRESHOLD && priorStock > LOW_STOCK_THRESHOLD) {
+    await notifyLowStock(product, variant, stock);
   }
 }
 

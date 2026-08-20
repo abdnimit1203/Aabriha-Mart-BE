@@ -11,6 +11,8 @@ import {
   restoreStockForItems,
   CheckoutItemInput,
 } from "../services/checkoutPricing";
+import { notifyNewOrder, notifyPaymentSubmitted, notifyOrderCancelled, notifyOrderReturned } from "../services/notifications/notificationService";
+import { sendNewOrderTelegramAlert } from "../services/notifications/telegramService";
 
 interface CheckoutBody {
   items: CheckoutItemInput[];
@@ -101,7 +103,18 @@ export async function createOrder(req: AuthedRequest, res: Response) {
   });
 
   await decrementStockForItems(pricing.items);
-  await User.findByIdAndUpdate(req.userId, { defaultAddress: address });
+  const customer = await User.findByIdAndUpdate(req.userId, { defaultAddress: address }, { new: false }).select("username");
+
+  // Notifications are a side effect of a successfully created order — never
+  // let a failure here (Mongo hiccup, Telegram down, etc.) affect the
+  // customer-facing response, which has already succeeded at this point.
+  notifyNewOrder(order).catch((err) => console.error("[notifications] new order:", err));
+  if (paymentMethod === "bkash" || paymentMethod === "nagad") {
+    notifyPaymentSubmitted(order).catch((err) => console.error("[notifications] payment submitted:", err));
+  }
+  sendNewOrderTelegramAlert(order, customer?.username ?? "Customer").catch((err) =>
+    console.error("[telegram] new order:", err)
+  );
 
   res.status(201).json(order);
 }
@@ -186,6 +199,10 @@ export async function updateOrderStatus(req: AuthedRequest, res: Response) {
 
   order.status = status;
   await order.save();
+
+  if (status === "cancelled") notifyOrderCancelled(order).catch((err) => console.error("[notifications] cancelled:", err));
+  if (status === "returned") notifyOrderReturned(order).catch((err) => console.error("[notifications] returned:", err));
+
   res.json(order);
 }
 

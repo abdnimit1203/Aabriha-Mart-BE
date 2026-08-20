@@ -11,6 +11,8 @@ import { orderRoutes } from "./routes/orderRoutes";
 import { heroBannerRoutes } from "./routes/heroBannerRoutes";
 import { promotionRoutes } from "./routes/promotionRoutes";
 import { announcementRoutes, welcomePopupRoutes } from "./routes/storefrontConfigRoutes";
+import { notificationRoutes } from "./routes/notificationRoutes";
+import { notificationSettingsRoutes } from "./routes/notificationSettingsRoutes";
 
 export const app = express();
 
@@ -29,6 +31,8 @@ app.use("/api/hero-banners", heroBannerRoutes);
 app.use("/api/promotions", promotionRoutes);
 app.use("/api/announcement", announcementRoutes);
 app.use("/api/welcome-popup", welcomePopupRoutes);
+app.use("/api/admin/notifications", notificationRoutes);
+app.use("/api/admin/notification-settings", notificationSettingsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

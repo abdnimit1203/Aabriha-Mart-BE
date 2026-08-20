@@ -29,5 +29,11 @@ export const env = {
     privateKey: process.env.IMAGEKIT_PRIVATE_KEY ?? "",
     urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT ?? "",
   },
+  telegram: {
+    // Optional — the whole feature degrades to "disabled" when unset. Never
+    // stored in Mongo, never returned from any API response (see
+    // notificationSettingsController).
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+  },
   isVercel: Boolean(process.env.VERCEL),
 };

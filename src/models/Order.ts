@@ -63,6 +63,10 @@ export interface IOrder {
   stripePaymentIntentId?: string;
   refundAmount?: number;
   refundReference?: string;
+  // Set the first time a Telegram "new order" alert is actually sent for
+  // this order — an idempotency guard so an accidental duplicate call for
+  // the same order (e.g. a retried request handler) can't double-send.
+  telegramNotifiedAt?: Date;
 }
 
 const orderItemSchema = new Schema<IOrderItem>(
@@ -111,6 +115,7 @@ const orderSchema = new Schema<IOrder>(
     stripePaymentIntentId: { type: String },
     refundAmount: { type: Number, min: 0 },
     refundReference: { type: String },
+    telegramNotifiedAt: { type: Date },
   },
   { timestamps: true }
 );
