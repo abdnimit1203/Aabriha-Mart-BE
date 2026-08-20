@@ -1,10 +1,16 @@
 import { Response } from "express";
-import { Order, PaymentMethod } from "../models/Order";
+import { Types } from "mongoose";
+import { Order, OrderStatus, PaymentMethod, PaymentStatus } from "../models/Order";
 import { User, IAddress } from "../models/User";
 import { HttpError } from "../middleware/errorHandler";
 import { AuthedRequest } from "../middleware/auth";
 import { stripe } from "../config/stripe";
-import { computeCheckoutPricing, decrementStockForItems, CheckoutItemInput } from "../services/checkoutPricing";
+import {
+  computeCheckoutPricing,
+  decrementStockForItems,
+  restoreStockForItems,
+  CheckoutItemInput,
+} from "../services/checkoutPricing";
 
 interface CheckoutBody {
   items: CheckoutItemInput[];
@@ -109,4 +115,77 @@ export async function getOrder(req: AuthedRequest, res: Response) {
 export async function listMyOrders(req: AuthedRequest, res: Response) {
   const orders = await Order.find({ customer: req.userId }).sort({ createdAt: -1 }).limit(50);
   res.json({ orders });
+}
+
+// A cancelled/returned order already had stock decremented at creation — flag
+// which statuses represent that "stock is out" state so a status transition
+// can tell whether it's restoring stock for the first time or not.
+const RESTOCKING_STATUSES: OrderStatus[] = ["cancelled", "returned"];
+
+export async function listAllOrders(req: AuthedRequest, res: Response) {
+  const { status, paymentStatus, source, search, page = "1", limit = "20" } = req.query as Record<string, string>;
+
+  const filter: Record<string, unknown> = {};
+  if (status) filter.status = status;
+  if (paymentStatus) filter.paymentStatus = paymentStatus;
+  if (source) filter.source = source;
+  if (search) {
+    const or: Record<string, unknown>[] = [{ phone: { $regex: search, $options: "i" } }];
+    if (Types.ObjectId.isValid(search)) or.push({ _id: search });
+    filter.$or = or;
+  }
+
+  const pageNum = Math.max(1, Number(page));
+  const limitNum = Math.min(100, Math.max(1, Number(limit)));
+  const skip = (pageNum - 1) * limitNum;
+
+  const total = await Order.countDocuments(filter);
+  const orders = await Order.find(filter)
+    .populate("customer", "username email phone")
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limitNum);
+
+  res.json({ orders, total, page: pageNum, limit: limitNum });
+}
+
+export async function getOrderAdmin(req: AuthedRequest, res: Response) {
+  const order = await Order.findById(req.params.id).populate("customer", "username email phone");
+  if (!order) throw new HttpError(404, "Order not found.");
+  res.json(order);
+}
+
+export async function updateOrderStatus(req: AuthedRequest, res: Response) {
+  const { status } = req.body as { status: OrderStatus };
+  const order = await Order.findById(req.params.id);
+  if (!order) throw new HttpError(404, "Order not found.");
+
+  // Restore stock only on the transition into a restocking status — moving
+  // between cancelled and returned (both already restocked) must not
+  // double-credit inventory.
+  if (RESTOCKING_STATUSES.includes(status) && !RESTOCKING_STATUSES.includes(order.status)) {
+    await restoreStockForItems(order.items);
+  }
+
+  order.status = status;
+  await order.save();
+  res.json(order);
+}
+
+export async function updateOrderPayment(req: AuthedRequest, res: Response) {
+  const { paymentStatus, refundAmount, refundReference } = req.body as {
+    paymentStatus: PaymentStatus;
+    refundAmount?: number;
+    refundReference?: string;
+  };
+  const order = await Order.findById(req.params.id);
+  if (!order) throw new HttpError(404, "Order not found.");
+
+  order.paymentStatus = paymentStatus;
+  if (paymentStatus === "refunded") {
+    order.refundAmount = refundAmount;
+    order.refundReference = refundReference;
+  }
+  await order.save();
+  res.json(order);
 }

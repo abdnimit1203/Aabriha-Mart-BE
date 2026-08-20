@@ -102,3 +102,19 @@ export async function decrementStockForItems(items: IOrderItem[]): Promise<void>
     }
   }
 }
+
+// Inverse of decrementStockForItems — used when an admin cancels/returns an
+// order that already decremented stock at creation, so inventory doesn't
+// stay short by the cancelled quantity.
+export async function restoreStockForItems(items: IOrderItem[]): Promise<void> {
+  for (const item of items) {
+    if (item.variantId) {
+      await Product.updateOne(
+        { _id: item.product, "variants._id": item.variantId },
+        { $inc: { "variants.$.stock": item.quantity } }
+      );
+    } else {
+      await Product.updateOne({ _id: item.product }, { $inc: { stock: item.quantity } });
+    }
+  }
+}
