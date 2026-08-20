@@ -8,6 +8,9 @@ import { productRoutes } from "./routes/productRoutes";
 import { authRoutes } from "./routes/authRoutes";
 import { uploadRoutes } from "./routes/uploadRoutes";
 import { orderRoutes } from "./routes/orderRoutes";
+import { heroBannerRoutes } from "./routes/heroBannerRoutes";
+import { promotionRoutes } from "./routes/promotionRoutes";
+import { announcementRoutes, welcomePopupRoutes } from "./routes/storefrontConfigRoutes";
 
 export const app = express();
 
@@ -22,6 +25,10 @@ app.use("/api/products", productRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/hero-banners", heroBannerRoutes);
+app.use("/api/promotions", promotionRoutes);
+app.use("/api/announcement", announcementRoutes);
+app.use("/api/welcome-popup", welcomePopupRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
