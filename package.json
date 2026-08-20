@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "seed": "tsx src/scripts/seed.ts",
+    "seed:reset": "tsx src/scripts/seedReset.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

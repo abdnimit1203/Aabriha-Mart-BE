@@ -1,6 +1,6 @@
 import { Response } from "express";
 import { Types } from "mongoose";
-import { Order, OrderStatus, PaymentMethod, PaymentStatus } from "../models/Order";
+import { Order, OrderStatus, PaymentMethod, PaymentStatus, NEXT_STATUSES } from "../models/Order";
 import { User, IAddress } from "../models/User";
 import { HttpError } from "../middleware/errorHandler";
 import { AuthedRequest } from "../middleware/auth";
@@ -123,12 +123,25 @@ export async function listMyOrders(req: AuthedRequest, res: Response) {
 const RESTOCKING_STATUSES: OrderStatus[] = ["cancelled", "returned"];
 
 export async function listAllOrders(req: AuthedRequest, res: Response) {
-  const { status, paymentStatus, source, search, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { status, paymentStatus, source, deliveryZone, dateFrom, dateTo, search, page = "1", limit = "20" } =
+    req.query as Record<string, string>;
 
   const filter: Record<string, unknown> = {};
   if (status) filter.status = status;
   if (paymentStatus) filter.paymentStatus = paymentStatus;
   if (source) filter.source = source;
+  if (deliveryZone) filter.deliveryZone = deliveryZone;
+  if (dateFrom || dateTo) {
+    const createdAt: Record<string, Date> = {};
+    if (dateFrom) createdAt.$gte = new Date(dateFrom);
+    if (dateTo) {
+      // Treat dateTo as inclusive of the whole day, not just its midnight instant.
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      createdAt.$lte = end;
+    }
+    filter.createdAt = createdAt;
+  }
   if (search) {
     const or: Record<string, unknown>[] = [{ phone: { $regex: search, $options: "i" } }];
     if (Types.ObjectId.isValid(search)) or.push({ _id: search });
@@ -159,6 +172,10 @@ export async function updateOrderStatus(req: AuthedRequest, res: Response) {
   const { status } = req.body as { status: OrderStatus };
   const order = await Order.findById(req.params.id);
   if (!order) throw new HttpError(404, "Order not found.");
+
+  if (status !== order.status && !NEXT_STATUSES[order.status].includes(status)) {
+    throw new HttpError(400, `Cannot move an order from "${order.status}" to "${status}".`);
+  }
 
   // Restore stock only on the transition into a restocking status — moving
   // between cancelled and returned (both already restocked) must not

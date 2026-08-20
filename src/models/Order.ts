@@ -19,6 +19,22 @@ export type OrderSource = "website" | "facebook" | "manual" | "other";
 // Orders ship (shipped/out_for_delivery/delivered/returned) can no longer be cancelled.
 export const CANCELLABLE_STATUSES: OrderStatus[] = ["pending", "confirmed", "processing", "packed"];
 
+// The single source of truth for which status an order can move to next —
+// enforced server-side in updateOrderStatus, and mirrored on the frontend
+// only to decide which actions to render. Cancellation disappears once an
+// order has shipped; Return takes its place. cancelled/returned are terminal.
+export const NEXT_STATUSES: Record<OrderStatus, OrderStatus[]> = {
+  pending: ["confirmed", "cancelled"],
+  confirmed: ["processing", "cancelled"],
+  processing: ["packed", "cancelled"],
+  packed: ["shipped", "cancelled"],
+  shipped: ["out_for_delivery", "returned"],
+  out_for_delivery: ["delivered", "returned"],
+  delivered: ["returned"],
+  cancelled: [],
+  returned: [],
+};
+
 export interface IOrderItem {
   product: Types.ObjectId;
   variantId?: Types.ObjectId;

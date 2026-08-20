@@ -29,7 +29,7 @@ export async function listProducts(req: Request, res: Response) {
     }
   }
   if (status) filter.status = status;
-  if (search) filter.$text = { $search: search };
+  if (search) filter.name = { $regex: search, $options: "i" };
   if (inStock === "true") {
     filter.$or = IN_STOCK_FILTER.$or;
   }
