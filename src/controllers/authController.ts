@@ -65,9 +65,22 @@ export async function syncProfile(req: FirebaseAuthedRequest, res: Response) {
   res.json(user);
 }
 
+// Firebase's own verification status only ever reaches Mongo at profile
+// creation (syncProfile) — a user who verifies their email afterward (in a
+// separate tab, from the emailed link) has nothing that writes that change
+// back to our stored copy. Every authenticated read self-heals that one
+// field: if the *current* token says verified but our stored copy doesn't,
+// bring it in line. Cheap (a single boolean) and correct regardless of
+// when/how the client asks.
 export async function getMe(req: AuthedRequest, res: Response) {
   const user = await User.findById(req.userId);
   if (!user) throw new HttpError(404, "Profile not found.");
+
+  if (req.firebaseEmailVerified && !user.emailVerified) {
+    user.emailVerified = true;
+    await user.save();
+  }
+
   res.json(user);
 }
 

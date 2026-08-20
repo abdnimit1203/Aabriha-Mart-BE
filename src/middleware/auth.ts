@@ -7,6 +7,11 @@ import { HttpError } from "./errorHandler";
 export interface AuthedRequest extends Request {
   userId?: string;
   userRole?: "customer" | AdminRole;
+  // The token's *current* verification claim — distinct from the Mongo
+  // User's stored emailVerified field, which only gets written at profile
+  // creation. Lets a handler notice "Firebase says verified now, but our
+  // stored copy is stale" and self-heal (see authController.getMe).
+  firebaseEmailVerified?: boolean;
 }
 
 export interface FirebaseAuthedRequest extends Request {
@@ -45,6 +50,7 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
   if (!user) throw new HttpError(401, "Account not found.");
   req.userId = String(user._id);
   req.userRole = user.role;
+  req.firebaseEmailVerified = Boolean(decoded.email_verified);
   next();
 }
 
