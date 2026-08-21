@@ -21,7 +21,7 @@ export async function updateAnnouncement(req: Request, res: Response) {
 }
 
 export async function getWelcomePopup(req: Request, res: Response) {
-  const popup = (await WelcomePopup.findOne({})) ?? { enabled: false };
+  const popup = (await WelcomePopup.findOne({})) ?? { enabled: false, image: "", ctaUrl: "" };
   res.json(popup);
 }
 
