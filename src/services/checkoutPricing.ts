@@ -3,11 +3,7 @@ import { Product, IVariant, IProduct } from "../models/Product";
 import { DeliveryRate, DeliveryZone, calculateDeliveryCharge } from "../models/DeliveryRate";
 import { IOrderItem } from "../models/Order";
 import { HttpError } from "../middleware/errorHandler";
-import { notifyLowStock, notifyOutOfStock } from "./notifications/notificationService";
-
-// Not admin-configurable yet (nothing in the current spec asked for that) —
-// a fixed threshold is enough for this store's current scale.
-const LOW_STOCK_THRESHOLD = 5;
+import { notifyStockCrossing } from "./notifications/notificationService";
 
 export interface CheckoutItemInput {
   productId: string;
@@ -112,31 +108,17 @@ export async function decrementStockForItems(items: IOrderItem[]): Promise<void>
       );
     }
     if (updated) {
-      checkStockThresholds(updated, item.variantId, item.quantity).catch((err) =>
-        console.error("[notifications] stock threshold check failed:", err)
-      );
+      const variant = item.variantId ? updated.variants.find((v) => String(v._id) === String(item.variantId)) : undefined;
+      const newStock = item.variantId ? variant?.stock : updated.stock;
+      if (newStock !== undefined) {
+        // The decrement already happened atomically above — reconstruct the
+        // prior value from the known decrement amount rather than a second read.
+        const priorStock = newStock + item.quantity;
+        notifyStockCrossing(updated, variant, priorStock, newStock).catch((err) =>
+          console.error("[notifications] stock threshold check failed:", err)
+        );
+      }
     }
-  }
-}
-
-// Fires low_stock/out_of_stock only on the exact crossing into that state
-// (prior stock was above the threshold, new stock isn't) — not on every
-// subsequent order while a product is already low, which would otherwise
-// spam a notification per sale.
-async function checkStockThresholds(
-  product: IProduct & { _id: Types.ObjectId },
-  variantId: Types.ObjectId | undefined,
-  quantityDecremented: number
-): Promise<void> {
-  const variant = variantId ? product.variants.find((v) => String(v._id) === String(variantId)) : undefined;
-  const stock = variantId ? variant?.stock : product.stock;
-  if (stock === undefined) return;
-
-  const priorStock = stock + quantityDecremented;
-  if (stock <= 0 && priorStock > 0) {
-    await notifyOutOfStock(product, variant);
-  } else if (stock > 0 && stock <= LOW_STOCK_THRESHOLD && priorStock > LOW_STOCK_THRESHOLD) {
-    await notifyLowStock(product, variant, stock);
   }
 }
 

@@ -2,7 +2,7 @@ import { Types } from "mongoose";
 import { Notification, NotificationType } from "../../models/Notification";
 import { AdminRole } from "../../models/User";
 import { IOrder } from "../../models/Order";
-import { IProduct, IVariant } from "../../models/Product";
+import { IProduct, IVariant, stockCrossingLevel } from "../../models/Product";
 
 interface CreateNotificationInput {
   type: NotificationType;
@@ -120,4 +120,24 @@ export function notifyOutOfStock(product: IProduct & { _id: Types.ObjectId }, va
     relatedProduct: String(product._id),
     actionUrl: `/admin/products/${product._id}/edit`,
   });
+}
+
+// The single seam every stock mutator calls through after mutating —
+// order-driven decrement (checkoutPricing.ts) and admin manual adjustment
+// (productController.ts's adjustStock) both go through this, so "does this
+// change warrant a notification" has exactly one answer regardless of which
+// caller changed the number. Never throws (createNotification already
+// swallows its own failures); safe to call without awaiting or catching.
+export async function notifyStockCrossing(
+  product: IProduct & { _id: Types.ObjectId },
+  variant: IVariant | undefined,
+  priorStock: number,
+  newStock: number
+): Promise<void> {
+  const level = stockCrossingLevel(priorStock, newStock);
+  if (level === "out_of_stock") {
+    await notifyOutOfStock(product, variant);
+  } else if (level === "low_stock") {
+    await notifyLowStock(product, variant, newStock);
+  }
 }

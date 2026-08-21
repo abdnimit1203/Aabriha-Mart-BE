@@ -1,7 +1,17 @@
 import { Request, Response } from "express";
 import { Types } from "mongoose";
-import { Product, MAX_IMAGES, EFFECTIVE_PRICE_EXPR, IN_STOCK_FILTER, ON_SALE_FILTER } from "../models/Product";
+import {
+  Product,
+  IVariant,
+  MAX_IMAGES,
+  EFFECTIVE_PRICE_EXPR,
+  IN_STOCK_FILTER,
+  ON_SALE_FILTER,
+  NEEDS_ATTENTION_FILTER,
+  OUT_OF_STOCK_FILTER,
+} from "../models/Product";
 import { HttpError } from "../middleware/errorHandler";
+import { notifyStockCrossing } from "../services/notifications/notificationService";
 
 type SortOption = "newest" | "price_asc" | "price_desc";
 
@@ -10,7 +20,7 @@ function isObjectId(value: string): boolean {
 }
 
 export async function listProducts(req: Request, res: Response) {
-  const { category, status, search, inStock, onSale, sort = "newest", page = "1", limit = "20" } = req.query as Record<
+  const { category, status, search, inStock, onSale, stockStatus, sort = "newest", page = "1", limit = "20" } = req.query as Record<
     string,
     string
   >;
@@ -35,6 +45,13 @@ export async function listProducts(req: Request, res: Response) {
   }
   if (onSale === "true") {
     filter.$expr = ON_SALE_FILTER.$expr;
+  }
+  // Admin Inventory list only — the storefront never passes this, so there's
+  // no real risk of colliding with inStock's $or above in practice.
+  if (stockStatus === "needs_attention") {
+    filter.$or = NEEDS_ATTENTION_FILTER.$or;
+  } else if (stockStatus === "out") {
+    filter.$nor = OUT_OF_STOCK_FILTER.$nor;
   }
 
   const pageNum = Math.max(1, Number(page));
@@ -111,14 +128,30 @@ export async function adjustStock(req: Request, res: Response) {
   const product = await Product.findById(req.params.id);
   if (!product) throw new HttpError(404, "Product not found.");
 
+  let variant: IVariant | undefined;
+  let priorStock: number;
+  let newStock: number;
+
   if (variantId) {
-    const variant = product.variants.find((v) => String(v._id) === variantId);
+    variant = product.variants.find((v) => String(v._id) === variantId);
     if (!variant) throw new HttpError(404, "Variant not found.");
+    priorStock = variant.stock;
     variant.stock = Math.max(0, variant.stock + delta);
+    newStock = variant.stock;
   } else {
-    product.stock = Math.max(0, (product.stock ?? 0) + delta);
+    priorStock = product.stock ?? 0;
+    product.stock = Math.max(0, priorStock + delta);
+    newStock = product.stock;
   }
 
   await product.save();
+
+  // Same notification seam order-driven decrements use (checkoutPricing.ts)
+  // — a manual correction that crosses a threshold notifies exactly like an
+  // order would, without duplicating the crossing rule here.
+  notifyStockCrossing(product, variant, priorStock, newStock).catch((err) =>
+    console.error("[notifications] stock threshold check failed:", err)
+  );
+
   res.json(product);
 }

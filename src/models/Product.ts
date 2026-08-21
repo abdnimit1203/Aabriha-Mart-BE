@@ -116,6 +116,42 @@ export const EFFECTIVE_PRICE_EXPR = {
 
 export const IN_STOCK_FILTER = { $or: [{ stock: { $gt: 0 } }, { "variants.stock": { $gt: 0 } }] };
 
+// Shared with the admin Inventory list's default filter and the low-stock
+// notification's crossing-check (checkoutPricing.ts), so both always agree
+// on what "low" means. Not admin-configurable — nothing has asked for that yet.
+export const LOW_STOCK_THRESHOLD = 5;
+
+// A product "needs attention" if any of its sellable units (root stock for a
+// simple product, or any variant) is at or below the threshold — including
+// zero. A field left unset (e.g. a variant product's root `stock`) never
+// matches a $lte comparison in Mongo, so this doesn't false-positive on the
+// side that doesn't apply to a given product shape.
+export const NEEDS_ATTENTION_FILTER = {
+  $or: [{ stock: { $lte: LOW_STOCK_THRESHOLD } }, { "variants.stock": { $lte: LOW_STOCK_THRESHOLD } }],
+};
+
+// The exact negation of IN_STOCK_FILTER — a product is out of stock only
+// when neither its root stock nor any variant has any left.
+export const OUT_OF_STOCK_FILTER = { $nor: [{ stock: { $gt: 0 } }, { "variants.stock": { $gt: 0 } }] };
+
+export type StockCrossingLevel = "out_of_stock" | "low_stock" | null;
+
+// Pure decision, no I/O: did a stock change cross *downward* through a
+// threshold? Only downward crossings matter — restocking back up (or
+// staying within the same band across repeated edits) is never itself
+// cause for an alert, which is what keeps this from re-firing on every
+// subsequent sale while a product is already low. This is the one
+// definition of "does this stock change warrant a notification," used by
+// every stock mutator (order-driven decrement, admin manual adjustment)
+// via notifyStockCrossing (services/notifications/notificationService.ts)
+// — so a new mutator gets the right behavior automatically instead of
+// needing to remember to wire it in.
+export function stockCrossingLevel(priorStock: number, newStock: number): StockCrossingLevel {
+  if (newStock <= 0 && priorStock > 0) return "out_of_stock";
+  if (newStock > 0 && newStock <= LOW_STOCK_THRESHOLD && priorStock > LOW_STOCK_THRESHOLD) return "low_stock";
+  return null;
+}
+
 // "On sale" means discountPrice is set and actually less than price — at the
 // product level for simple products, or on any variant for variant products.
 // Needs $expr (comparing two fields of the same document/subdocument), which
