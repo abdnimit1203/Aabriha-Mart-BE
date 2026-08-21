@@ -14,6 +14,8 @@ import { announcementRoutes, welcomePopupRoutes } from "./routes/storefrontConfi
 import { notificationRoutes } from "./routes/notificationRoutes";
 import { notificationSettingsRoutes } from "./routes/notificationSettingsRoutes";
 import { dashboardRoutes } from "./routes/dashboardRoutes";
+import { userRoutes } from "./routes/userRoutes";
+import { analyticsRoutes } from "./routes/analyticsRoutes";
 
 export const app = express();
 
@@ -35,6 +37,8 @@ app.use("/api/welcome-popup", welcomePopupRoutes);
 app.use("/api/admin/notifications", notificationRoutes);
 app.use("/api/admin/notification-settings", notificationSettingsRoutes);
 app.use("/api/admin/dashboard", dashboardRoutes);
+app.use("/api/admin/users", userRoutes);
+app.use("/api/admin/analytics", analyticsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

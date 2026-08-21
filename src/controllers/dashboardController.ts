@@ -2,6 +2,7 @@ import { Response } from "express";
 import { Order, OrderStatus } from "../models/Order";
 import { Product, NEEDS_ATTENTION_FILTER } from "../models/Product";
 import { AuthedRequest } from "../middleware/auth";
+import { dhakaDateKey, startOfDhakaDay, DHAKA_TIMEZONE } from "../lib/dhakaDate";
 
 // The real pipeline, in order — mirrors NEXT_STATUSES' linear chain
 // (Order.ts). cancelled/returned are terminal side-branches, not part of
@@ -19,31 +20,6 @@ const ALL_STATUSES: OrderStatus[] = [...PIPELINE_STATUSES, "cancelled", "returne
 
 const TREND_DAYS = 7;
 
-// This store is Bangladesh-only (docs/architecture.md) — "today" and daily
-// buckets should always mean a Dhaka calendar day, regardless of where the
-// server process actually runs. Using the server's local timezone would be
-// wrong the moment this deploys somewhere that isn't already on Dhaka time
-// (e.g. a UTC serverless function), and mixing server-local Date math with
-// UTC-based date-string grouping produced a real day-off-by-one bug in
-// testing (the "today" column of the trend chart didn't match the
-// browser's own idea of today). Bangladesh doesn't observe DST, so a fixed
-// +6:00 offset is safe to hardcode rather than needing a timezone library.
-const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
-const DHAKA_TIMEZONE = "Asia/Dhaka";
-
-function dhakaDateKey(date: Date): string {
-  return new Date(date.getTime() + DHAKA_OFFSET_MS).toISOString().slice(0, 10);
-}
-
-// Midnight at the start of `date`'s Dhaka calendar day, expressed as the
-// true UTC instant that moment falls on (what Mongo actually compares
-// createdAt against).
-function startOfDhakaDay(date: Date): Date {
-  const shifted = new Date(date.getTime() + DHAKA_OFFSET_MS);
-  shifted.setUTCHours(0, 0, 0, 0);
-  return new Date(shifted.getTime() - DHAKA_OFFSET_MS);
-}
-
 // The four numbers the Dashboard page's own placeholder already promised:
 // today's orders, today's revenue, and a low-stock alert count — plus
 // pending orders, the other thing an admin actually needs to act on first
@@ -57,7 +33,7 @@ export async function getDashboardSummary(req: AuthedRequest, res: Response) {
   const trendStart = new Date(startOfToday);
   trendStart.setDate(trendStart.getDate() - (TREND_DAYS - 1));
 
-  const [todayAgg, pendingOrders, needsAttentionCount, statusAgg, trendAgg] = await Promise.all([
+  const [todayAgg, pendingOrders, needsAttentionCount, statusAgg, trendAgg, totalProducts, totalOrders] = await Promise.all([
     Order.aggregate([
       { $match: { createdAt: { $gte: startOfToday } } },
       { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: "$total" } } },
@@ -75,6 +51,12 @@ export async function getDashboardSummary(req: AuthedRequest, res: Response) {
         },
       },
     ]),
+    // Whole-catalog/lifetime counts — every product regardless of
+    // active/inactive status, every order regardless of status, since these
+    // answer "how big is the catalog / how many orders has the store ever
+    // gotten," not "what's customer-visible right now."
+    Product.countDocuments({}),
+    Order.countDocuments({}),
   ]);
 
   const today = todayAgg[0] ?? { count: 0, revenue: 0 };
@@ -100,6 +82,8 @@ export async function getDashboardSummary(req: AuthedRequest, res: Response) {
     todayRevenue: today.revenue as number,
     pendingOrders,
     needsAttentionCount,
+    totalProducts,
+    totalOrders,
     statusCounts,
     last7Days,
   });

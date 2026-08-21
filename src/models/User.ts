@@ -22,6 +22,8 @@ export interface IUser {
   defaultAddress?: IAddress;
   role: "customer" | AdminRole;
   isDeleted: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const addressSchema = new Schema<IAddress>(
