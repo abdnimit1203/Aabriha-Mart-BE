@@ -12,6 +12,7 @@ import {
 } from "../models/Product";
 import { HttpError } from "../middleware/errorHandler";
 import { notifyStockCrossing } from "../services/notifications/notificationService";
+import { Order } from "../models/Order";
 
 type SortOption = "newest" | "price_asc" | "price_desc";
 
@@ -90,6 +91,32 @@ export async function listProducts(req: Request, res: Response) {
   }
 
   res.json({ products, total, page: pageNum, limit: limitNum });
+}
+
+// Ranked by real units sold (summed across each order's line items), not a
+// fake "featured" flag or an arbitrary limit — the only honest definition of
+// "popular" this app has data for. Cancelled orders never fulfilled, so they
+// don't count as demand; a returned order still shipped once, so it does.
+// Products with zero sales history are simply absent from the ranking
+// (never backfilled with unrelated products) — an empty result is a valid,
+// expected answer for a brand-new catalog.
+export async function getPopularProducts(req: Request, res: Response) {
+  const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 8));
+
+  const ranked = await Order.aggregate([
+    { $match: { status: { $ne: "cancelled" } } },
+    { $unwind: "$items" },
+    { $group: { _id: "$items.product", unitsSold: { $sum: "$items.quantity" } } },
+    { $sort: { unitsSold: -1 } },
+    { $limit: limit * 2 }, // headroom for ids whose product was since deactivated/deleted
+  ]);
+
+  const rankedIds = ranked.map((r) => r._id);
+  const products = await Product.find({ _id: { $in: rankedIds }, status: "active" }).populate("category", "name slug");
+  const byId = new Map(products.map((p) => [String(p._id), p]));
+  const ordered = rankedIds.map((id) => byId.get(String(id))).filter(Boolean).slice(0, limit);
+
+  res.json({ products: ordered });
 }
 
 export async function getProduct(req: Request, res: Response) {
