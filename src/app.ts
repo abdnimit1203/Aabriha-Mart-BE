@@ -13,6 +13,7 @@ import { promotionRoutes } from "./routes/promotionRoutes";
 import { announcementRoutes, welcomePopupRoutes } from "./routes/storefrontConfigRoutes";
 import { notificationRoutes } from "./routes/notificationRoutes";
 import { notificationSettingsRoutes } from "./routes/notificationSettingsRoutes";
+import { dashboardRoutes } from "./routes/dashboardRoutes";
 
 export const app = express();
 
@@ -33,6 +34,7 @@ app.use("/api/announcement", announcementRoutes);
 app.use("/api/welcome-popup", welcomePopupRoutes);
 app.use("/api/admin/notifications", notificationRoutes);
 app.use("/api/admin/notification-settings", notificationSettingsRoutes);
+app.use("/api/admin/dashboard", dashboardRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
